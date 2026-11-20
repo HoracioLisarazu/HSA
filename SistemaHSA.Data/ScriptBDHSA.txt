@@ -1,0 +1,796 @@
+============================================================
+SCRIPT – HOSPITAL SAN ANTONIO
+ACTIVOS FIJOS + RECURSOS HUMANOS
+Base de datos: HOSPITAL_SAN_ANTONIO
+============================================================
+
+
+============================================================
+BLOQUE 1 – ACTIVOS FIJOS
+============================================================
+
+/* =====================================================
+   PROYECTO: HOSPITAL SAN ANTONIO
+   modulo activos fijos 
+*/
+
+-- =====================================================
+-- 1. CREACION DE LA BASE DE DATOS
+-- =====================================================
+
+USE master;
+GO
+
+IF DB_ID('HOSPITAL_SAN_ANTONIO') IS NULL
+BEGIN
+    CREATE DATABASE HOSPITAL_SAN_ANTONIO;
+END;
+GO
+
+USE HOSPITAL_SAN_ANTONIO;
+GO
+
+/* =====================================================
+   2. SERVICIO HOSPITALARIO
+   TABLA COMPARTIDA
+   ===================================================== */
+
+CREATE TABLE SERVICIO_HOSPITALARIO (
+    idServicio INT IDENTITY(1,1) NOT NULL,
+    nombreServicio NVARCHAR(100) NOT NULL,
+    descripcion NVARCHAR(250) NULL,
+    activo BIT NOT NULL DEFAULT 1,
+
+    CONSTRAINT PK_SERVICIO_HOSPITALARIO
+        PRIMARY KEY (idServicio)
+);
+GO
+
+/* =====================================================
+   3. PERSONAL
+   REFERENCIA AL MODULO DE RECURSOS HUMANOS
+   ===================================================== */
+
+CREATE TABLE PERSONAL (
+    idPersonal INT IDENTITY(1,1) NOT NULL,
+    CI NVARCHAR(20) NOT NULL,
+    nombres NVARCHAR(100) NOT NULL,
+    apellidos NVARCHAR(100) NOT NULL,
+    cargo NVARCHAR(100) NULL,
+    especialidad NVARCHAR(150) NULL,
+    idServicio INT NULL,
+    estado NVARCHAR(30) NULL,
+    fechaRegistro DATE NULL,
+
+    CONSTRAINT PK_PERSONAL
+        PRIMARY KEY (idPersonal),
+
+    CONSTRAINT UQ_PERSONAL_CI
+        UNIQUE (CI),
+
+    CONSTRAINT FK_PERSONAL_SERVICIO
+        FOREIGN KEY (idServicio)
+        REFERENCES SERVICIO_HOSPITALARIO(idServicio)
+);
+GO
+
+/* =====================================================
+   4. USUARIO
+   SOLO PERSONAL REGISTRADO PUEDE TENER CUENTA
+   ===================================================== */
+
+CREATE TABLE USUARIO (
+    idUsuario INT IDENTITY(1,1) NOT NULL,
+    idPersonal INT NOT NULL,
+    nombreUsuario NVARCHAR(50) NOT NULL,
+    claveHash NVARCHAR(255) NOT NULL,
+    rol NVARCHAR(50) NOT NULL,
+    activo BIT NOT NULL DEFAULT 1,
+    fechaCreacion DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+
+    CONSTRAINT PK_USUARIO
+        PRIMARY KEY (idUsuario),
+
+    CONSTRAINT UQ_USUARIO_PERSONAL
+        UNIQUE (idPersonal),
+
+    CONSTRAINT UQ_USUARIO_NOMBRE
+        UNIQUE (nombreUsuario),
+
+    CONSTRAINT FK_USUARIO_PERSONAL
+        FOREIGN KEY (idPersonal)
+        REFERENCES PERSONAL(idPersonal)
+);
+GO
+
+/* =====================================================
+   5. PARAMETRO
+   CATALOGOS ESTANDARIZADOS
+   RELACION JERARQUICA PADRE-HIJO
+   ===================================================== */
+
+CREATE TABLE PARAMETRO (
+    idParametro INT IDENTITY(1,1) NOT NULL,
+    idParametroPadre INT NULL,
+    codigo NVARCHAR(50) NOT NULL,
+    nombre NVARCHAR(100) NOT NULL,
+    descripcion NVARCHAR(250) NULL,
+    orden INT NOT NULL DEFAULT 0,
+    activo BIT NOT NULL DEFAULT 1,
+
+    CONSTRAINT PK_PARAMETRO
+        PRIMARY KEY (idParametro),
+
+    CONSTRAINT UQ_PARAMETRO_CODIGO
+        UNIQUE (codigo),
+
+    CONSTRAINT FK_PARAMETRO_PADRE
+        FOREIGN KEY (idParametroPadre)
+        REFERENCES PARAMETRO(idParametro),
+
+    CONSTRAINT CK_PARAMETRO_ORDEN
+        CHECK (orden >= 0),
+
+    CONSTRAINT CK_PARAMETRO_PADRE
+        CHECK (
+            idParametroPadre IS NULL
+            OR idParametroPadre <> idParametro
+        )
+);
+GO
+
+/* =====================================================
+   6. AREA
+   ===================================================== */
+
+CREATE TABLE AREA (
+    idArea INT IDENTITY(1,1) NOT NULL,
+    idServicio INT NOT NULL,
+    nombreArea NVARCHAR(100) NOT NULL,
+    descripcion NVARCHAR(250) NULL,
+    activo BIT NOT NULL DEFAULT 1,
+    fechaModificacion DATETIME2 NULL,
+    idUsuarioModificacion INT NULL,
+
+    CONSTRAINT PK_AREA
+        PRIMARY KEY (idArea),
+
+    CONSTRAINT FK_AREA_SERVICIO
+        FOREIGN KEY (idServicio)
+        REFERENCES SERVICIO_HOSPITALARIO(idServicio),
+
+    CONSTRAINT FK_AREA_USUARIO
+        FOREIGN KEY (idUsuarioModificacion)
+        REFERENCES USUARIO(idUsuario)
+);
+GO
+
+/* =====================================================
+   7. UBICACION
+   ===================================================== */
+
+CREATE TABLE UBICACION (
+    idUbicacion INT IDENTITY(1,1) NOT NULL,
+    codigoUbicacion NVARCHAR(30) NOT NULL,
+    idArea INT NOT NULL,
+    nombreUbicacion NVARCHAR(100) NOT NULL,
+    descripcion NVARCHAR(250) NULL,
+    activo BIT NOT NULL DEFAULT 1,
+    fechaModificacion DATETIME2 NULL,
+    idUsuarioModificacion INT NULL,
+
+    CONSTRAINT PK_UBICACION
+        PRIMARY KEY (idUbicacion),
+
+    CONSTRAINT UQ_UBICACION_CODIGO
+        UNIQUE (codigoUbicacion),
+
+    CONSTRAINT FK_UBICACION_AREA
+        FOREIGN KEY (idArea)
+        REFERENCES AREA(idArea),
+
+    CONSTRAINT FK_UBICACION_USUARIO
+        FOREIGN KEY (idUsuarioModificacion)
+        REFERENCES USUARIO(idUsuario)
+);
+GO
+
+/* =====================================================
+   8. ACTIVO FIJO
+   CODIGO INSTITUCIONAL COMO PK
+   QR INTEGRADO EN LA TABLA
+   ===================================================== */
+
+CREATE TABLE ACTIVO_FIJO (
+    codigoInstitucional NVARCHAR(30) NOT NULL,
+
+    tokenQR NVARCHAR(100) NOT NULL
+        DEFAULT (CONVERT(NVARCHAR(36), NEWID())),
+
+    fechaAdquisicion DATE NOT NULL,
+    numeroSerie NVARCHAR(100) NULL,
+    descripcion NVARCHAR(250) NOT NULL,
+    marca NVARCHAR(100) NULL,
+    modelo NVARCHAR(100) NULL,
+    capacidad NVARCHAR(100) NULL,
+
+    idCategoria INT NOT NULL,
+    idTipoMobiliario INT NULL,
+    idEstado INT NOT NULL,
+    idUbicacion INT NOT NULL,
+    idFuenteFinanciamiento INT NULL,
+
+    observaciones NVARCHAR(500) NULL,
+    fechaModificacion DATETIME2 NULL,
+    idUsuarioModificacion INT NULL,
+
+    CONSTRAINT PK_ACTIVO_FIJO
+        PRIMARY KEY (codigoInstitucional),
+
+    CONSTRAINT UQ_ACTIVO_TOKENQR
+        UNIQUE (tokenQR),
+
+    CONSTRAINT FK_ACTIVO_CATEGORIA
+        FOREIGN KEY (idCategoria)
+        REFERENCES PARAMETRO(idParametro),
+
+    CONSTRAINT FK_ACTIVO_TIPO_MOBILIARIO
+        FOREIGN KEY (idTipoMobiliario)
+        REFERENCES PARAMETRO(idParametro),
+
+    CONSTRAINT FK_ACTIVO_ESTADO
+        FOREIGN KEY (idEstado)
+        REFERENCES PARAMETRO(idParametro),
+
+    CONSTRAINT FK_ACTIVO_UBICACION
+        FOREIGN KEY (idUbicacion)
+        REFERENCES UBICACION(idUbicacion),
+
+    CONSTRAINT FK_ACTIVO_FINANCIAMIENTO
+        FOREIGN KEY (idFuenteFinanciamiento)
+        REFERENCES PARAMETRO(idParametro),
+
+    CONSTRAINT FK_ACTIVO_USUARIO
+        FOREIGN KEY (idUsuarioModificacion)
+        REFERENCES USUARIO(idUsuario)
+);
+GO
+
+/* =====================================================
+   9. ASIGNACION ACTIVO
+   CABECERA DE LA ENTREGA
+   ===================================================== */
+
+CREATE TABLE ASIGNACION_ACTIVO (
+    idAsignacion INT IDENTITY(1,1) NOT NULL,
+    numeroAsignacion NVARCHAR(30) NOT NULL,
+    idPersonal INT NOT NULL,
+    idUsuarioRegistro INT NOT NULL,
+
+    fechaAsignacion DATETIME2 NOT NULL,
+    fechaActa DATETIME2 NULL,
+    numeroActa NVARCHAR(30) NULL,
+    archivoActaPDF NVARCHAR(500) NULL,
+
+    estadoAsignacion NVARCHAR(40) NOT NULL,
+    observaciones NVARCHAR(500) NULL,
+
+    fechaModificacion DATETIME2 NULL,
+    idUsuarioModificacion INT NULL,
+
+    CONSTRAINT PK_ASIGNACION_ACTIVO
+        PRIMARY KEY (idAsignacion),
+
+    CONSTRAINT UQ_ASIGNACION_NUMERO
+        UNIQUE (numeroAsignacion),
+
+    CONSTRAINT FK_ASIGNACION_PERSONAL
+        FOREIGN KEY (idPersonal)
+        REFERENCES PERSONAL(idPersonal),
+
+    CONSTRAINT FK_ASIGNACION_USUARIO_REGISTRO
+        FOREIGN KEY (idUsuarioRegistro)
+        REFERENCES USUARIO(idUsuario),
+
+    CONSTRAINT FK_ASIGNACION_USUARIO_MODIFICACION
+        FOREIGN KEY (idUsuarioModificacion)
+        REFERENCES USUARIO(idUsuario)
+);
+GO
+
+/* =====================================================
+   10. DETALLE ASIGNACION ACTIVO
+   ACTIVOS INCLUIDOS EN CADA ENTREGA
+   ===================================================== */
+
+CREATE TABLE DETALLE_ASIGNACION_ACTIVO (
+    idDetalleAsignacion INT IDENTITY(1,1) NOT NULL,
+    idAsignacion INT NOT NULL,
+    codigoInstitucional NVARCHAR(30) NOT NULL,
+
+    fechaDevolucionPrevista DATETIME2 NULL,
+    fechaDevolucion DATETIME2 NULL,
+
+    idUsuarioDevolucion INT NULL,
+    idUsuarioRegistro INT NOT NULL,
+
+    estadoDetalle NVARCHAR(40) NOT NULL,
+    observaciones NVARCHAR(500) NULL,
+
+    fechaModificacion DATETIME2 NULL,
+    idUsuarioModificacion INT NULL,
+
+    CONSTRAINT PK_DETALLE_ASIGNACION_ACTIVO
+        PRIMARY KEY (idDetalleAsignacion),
+
+    CONSTRAINT UQ_DETALLE_ASIGNACION_ACTIVO
+        UNIQUE (idAsignacion, codigoInstitucional),
+
+    CONSTRAINT FK_DETALLE_ASIGNACION
+        FOREIGN KEY (idAsignacion)
+        REFERENCES ASIGNACION_ACTIVO(idAsignacion),
+
+    CONSTRAINT FK_DETALLE_ACTIVO
+        FOREIGN KEY (codigoInstitucional)
+        REFERENCES ACTIVO_FIJO(codigoInstitucional),
+
+    CONSTRAINT FK_DETALLE_USUARIO_DEVOLUCION
+        FOREIGN KEY (idUsuarioDevolucion)
+        REFERENCES USUARIO(idUsuario),
+
+    CONSTRAINT FK_DETALLE_USUARIO_REGISTRO
+        FOREIGN KEY (idUsuarioRegistro)
+        REFERENCES USUARIO(idUsuario),
+
+    CONSTRAINT FK_DETALLE_USUARIO_MODIFICACION
+        FOREIGN KEY (idUsuarioModificacion)
+        REFERENCES USUARIO(idUsuario)
+);
+GO
+
+/* =====================================================
+   11. HISTORIAL ACTIVO
+   MOVIMIENTOS Y MANTENIMIENTOS UNIFICADOS
+   ===================================================== */
+
+CREATE TABLE HISTORIAL_ACTIVO (
+    idHistorial INT IDENTITY(1,1) NOT NULL,
+    codigoInstitucional NVARCHAR(30) NOT NULL,
+    idUsuario INT NOT NULL,
+
+    idTipoMovimiento INT NOT NULL,
+    idTipoMantenimiento INT NULL,
+    idEstado INT NULL,
+    idUbicacion INT NULL,
+
+    fechaMovimiento DATETIME2 NOT NULL
+        DEFAULT SYSDATETIME(),
+
+    descripcion NVARCHAR(500) NULL,
+    responsableMantenimiento NVARCHAR(150) NULL,
+    costo DECIMAL(12,2) NULL,
+    observaciones NVARCHAR(500) NULL,
+
+    CONSTRAINT PK_HISTORIAL_ACTIVO
+        PRIMARY KEY (idHistorial),
+
+    CONSTRAINT FK_HISTORIAL_ACTIVO
+        FOREIGN KEY (codigoInstitucional)
+        REFERENCES ACTIVO_FIJO(codigoInstitucional),
+
+    CONSTRAINT FK_HISTORIAL_USUARIO
+        FOREIGN KEY (idUsuario)
+        REFERENCES USUARIO(idUsuario),
+
+    CONSTRAINT FK_HISTORIAL_TIPO_MOVIMIENTO
+        FOREIGN KEY (idTipoMovimiento)
+        REFERENCES PARAMETRO(idParametro),
+
+    CONSTRAINT FK_HISTORIAL_TIPO_MANTENIMIENTO
+        FOREIGN KEY (idTipoMantenimiento)
+        REFERENCES PARAMETRO(idParametro),
+
+    CONSTRAINT FK_HISTORIAL_ESTADO
+        FOREIGN KEY (idEstado)
+        REFERENCES PARAMETRO(idParametro),
+
+    CONSTRAINT FK_HISTORIAL_UBICACION
+        FOREIGN KEY (idUbicacion)
+        REFERENCES UBICACION(idUbicacion),
+
+    CONSTRAINT CK_HISTORIAL_COSTO
+        CHECK (costo IS NULL OR costo >= 0)
+);
+GO
+
+/* =====================================================
+   12. AUDITORIA MODIFICACION
+   ===================================================== */
+
+CREATE TABLE AUDITORIA_MODIFICACION (
+    idModificacion INT IDENTITY(1,1) NOT NULL,
+    idUsuario INT NOT NULL,
+
+    nombreTabla NVARCHAR(100) NOT NULL,
+    identificadorRegistro NVARCHAR(150) NOT NULL,
+    tipoOperacion NVARCHAR(20) NOT NULL,
+
+    fechaModificacion DATETIME2 NOT NULL
+        DEFAULT SYSDATETIME(),
+
+    valoresAnteriores NVARCHAR(MAX) NULL,
+    valoresNuevos NVARCHAR(MAX) NULL,
+
+    CONSTRAINT PK_AUDITORIA_MODIFICACION
+        PRIMARY KEY (idModificacion),
+
+    CONSTRAINT FK_AUDITORIA_USUARIO
+        FOREIGN KEY (idUsuario)
+        REFERENCES USUARIO(idUsuario),
+
+    CONSTRAINT CK_AUDITORIA_OPERACION
+        CHECK (
+            tipoOperacion IN ('INSERT', 'UPDATE', 'DELETE')
+        )
+);
+GO
+
+/* =====================================================
+   13. INDICES Y RESTRICCIONES ADICIONALES
+   ===================================================== */
+
+-- Evitar números de acta duplicados.
+-- Permitir asignaciones sin acta mientras estén en preparación.
+
+CREATE UNIQUE INDEX UX_ASIGNACION_NUMERO_ACTA
+ON ASIGNACION_ACTIVO(numeroActa)
+WHERE numeroActa IS NOT NULL;
+GO
+
+-- Un activo no puede tener dos custodias vigentes.
+
+CREATE UNIQUE INDEX UX_ACTIVO_CUSTODIA_VIGENTE
+ON DETALLE_ASIGNACION_ACTIVO(codigoInstitucional)
+WHERE estadoDetalle = 'ENTREGADO'
+AND fechaDevolucion IS NULL;
+GO
+
+-- Índices para consultas frecuentes.
+
+CREATE INDEX IX_ACTIVO_UBICACION
+ON ACTIVO_FIJO(idUbicacion);
+GO
+
+CREATE INDEX IX_DETALLE_ASIGNACION
+ON DETALLE_ASIGNACION_ACTIVO(idAsignacion);
+GO
+
+CREATE INDEX IX_HISTORIAL_ACTIVO
+ON HISTORIAL_ACTIVO(codigoInstitucional);
+GO
+
+CREATE INDEX IX_AUDITORIA_USUARIO_FECHA
+ON AUDITORIA_MODIFICACION(idUsuario, fechaModificacion);
+GO
+
+/* =====================================================
+   14. COMPROBACION DE TABLAS CREADAS
+   ===================================================== */
+
+SELECT
+    TABLE_NAME AS TABLA_CREADA
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE = 'BASE TABLE'
+ORDER BY TABLE_NAME;
+GO
+
+/* =====================================================
+   FIN DE CREACION DEL MODULO ACTIVOS FIJOS
+   ===================================================== */
+
+============================================================
+BLOQUE 2 – RECURSOS HUMANOS
+============================================================
+
+/* ============================================================
+   PROYECTO: HOSPITAL SAN ANTONIO
+   MODULO: RECURSOS HUMANOS
+   VERSION: 1.0
+   BASE DE DATOS: HOSPITAL_SAN_ANTONIO
+
+   IMPORTANTE:
+   - No recrea la base de datos.
+   - No modifica el modulo de ACTIVOS FIJOS.
+   - Reutiliza PERSONAL, USUARIO y SERVICIO_HOSPITALARIO.
+   - No almacena marcaciones ni reportes biometricos.
+   ============================================================ */
+
+USE HOSPITAL_SAN_ANTONIO;
+GO
+
+/* ============================================================
+   1. ACTUALIZAR PERSONAL
+   AGREGAR CODIGO BIOMETRICO
+   ============================================================ */
+
+IF COL_LENGTH('dbo.PERSONAL', 'codigoBiometrico') IS NULL
+BEGIN
+    ALTER TABLE dbo.PERSONAL
+    ADD codigoBiometrico NVARCHAR(50) NULL;
+
+    PRINT 'Campo codigoBiometrico agregado.';
+END
+ELSE
+BEGIN
+    PRINT 'codigoBiometrico ya existe.';
+END;
+GO
+
+/* ============================================================
+   2. INDICE UNICO DEL CODIGO BIOMETRICO
+   ============================================================ */
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = 'UX_PERSONAL_CODIGO_BIOMETRICO'
+      AND object_id = OBJECT_ID('dbo.PERSONAL')
+)
+BEGIN
+    CREATE UNIQUE INDEX UX_PERSONAL_CODIGO_BIOMETRICO
+    ON dbo.PERSONAL(codigoBiometrico)
+    WHERE codigoBiometrico IS NOT NULL;
+
+    PRINT 'Indice unico biometrico creado.';
+END;
+GO
+
+/* ============================================================
+   3. EXPEDIENTE_PERSONAL
+   UN TRABAJADOR PUEDE TENER VARIOS EXPEDIENTES
+   ============================================================ */
+
+IF OBJECT_ID('dbo.EXPEDIENTE_PERSONAL', 'U') IS NULL
+BEGIN
+
+    CREATE TABLE dbo.EXPEDIENTE_PERSONAL (
+        idExpediente INT IDENTITY(1,1) NOT NULL,
+        idPersonal INT NOT NULL,
+        tipoContrato NVARCHAR(100) NOT NULL,
+        itemAsignado NVARCHAR(100) NULL,
+        fechaInicio DATE NOT NULL,
+        fechaFin DATE NULL,
+        estado NVARCHAR(30) NOT NULL,
+
+        CONSTRAINT PK_EXPEDIENTE_PERSONAL
+            PRIMARY KEY (idExpediente),
+
+        CONSTRAINT FK_EXPEDIENTE_PERSONAL
+            FOREIGN KEY (idPersonal)
+            REFERENCES dbo.PERSONAL(idPersonal),
+
+        CONSTRAINT CK_EXPEDIENTE_FECHAS
+            CHECK (
+                fechaFin IS NULL
+                OR fechaFin >= fechaInicio
+            )
+    );
+
+    PRINT 'Tabla EXPEDIENTE_PERSONAL creada.';
+END
+ELSE
+BEGIN
+    PRINT 'EXPEDIENTE_PERSONAL ya existe.';
+END;
+GO
+
+/* ============================================================
+   4. DOCUMENTO_PROFESIONAL
+   RELACION DIRECTA CON PERSONAL
+   ============================================================ */
+
+IF OBJECT_ID('dbo.DOCUMENTO_PROFESIONAL', 'U') IS NULL
+BEGIN
+
+    CREATE TABLE dbo.DOCUMENTO_PROFESIONAL (
+        idDocumento INT IDENTITY(1,1) NOT NULL,
+        idPersonal INT NOT NULL,
+        tipoDocumento NVARCHAR(100) NOT NULL,
+        numeroDocumento NVARCHAR(100) NOT NULL,
+        fechaEmision DATE NULL,
+        fechaVencimiento DATE NULL,
+        archivoAdjunto NVARCHAR(500) NULL,
+        estado NVARCHAR(30) NOT NULL,
+
+        CONSTRAINT PK_DOCUMENTO_PROFESIONAL
+            PRIMARY KEY (idDocumento),
+
+        CONSTRAINT FK_DOCUMENTO_PERSONAL
+            FOREIGN KEY (idPersonal)
+            REFERENCES dbo.PERSONAL(idPersonal)
+    );
+
+    PRINT 'Tabla DOCUMENTO_PROFESIONAL creada.';
+END
+ELSE
+BEGIN
+    PRINT 'DOCUMENTO_PROFESIONAL ya existe.';
+END;
+GO
+
+/* ============================================================
+   5. HORARIO_REFERENCIA
+   HORARIOS HABITUALES POR TRABAJADOR
+   ADMITE JORNADAS NOCTURNAS
+   ============================================================ */
+
+IF OBJECT_ID('dbo.HORARIO_REFERENCIA', 'U') IS NULL
+BEGIN
+
+    CREATE TABLE dbo.HORARIO_REFERENCIA (
+        idHorario INT IDENTITY(1,1) NOT NULL,
+        idPersonal INT NOT NULL,
+        diaSemana TINYINT NOT NULL,
+        diaSalida TINYINT NOT NULL,
+        horaEntrada TIME(0) NOT NULL,
+        horaSalida TIME(0) NOT NULL,
+        fechaInicioVigencia DATE NOT NULL,
+        fechaFinVigencia DATE NULL,
+        activo BIT NOT NULL DEFAULT 1,
+
+        CONSTRAINT PK_HORARIO_REFERENCIA
+            PRIMARY KEY (idHorario),
+
+        CONSTRAINT FK_HORARIO_PERSONAL
+            FOREIGN KEY (idPersonal)
+            REFERENCES dbo.PERSONAL(idPersonal),
+
+        CONSTRAINT CK_HORARIO_DIA_SEMANA
+            CHECK (diaSemana BETWEEN 1 AND 7),
+
+        CONSTRAINT CK_HORARIO_DIA_SALIDA
+            CHECK (diaSalida BETWEEN 1 AND 7),
+
+        CONSTRAINT CK_HORARIO_VIGENCIA
+            CHECK (
+                fechaFinVigencia IS NULL
+                OR fechaFinVigencia >= fechaInicioVigencia
+            )
+    );
+
+    PRINT 'Tabla HORARIO_REFERENCIA creada.';
+END
+ELSE
+BEGIN
+    PRINT 'HORARIO_REFERENCIA ya existe.';
+END;
+GO
+
+/* ============================================================
+   6. INDICES PARA CONSULTAS DE RECURSOS HUMANOS
+   ============================================================ */
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = 'IX_EXPEDIENTE_PERSONAL'
+      AND object_id = OBJECT_ID('dbo.EXPEDIENTE_PERSONAL')
+)
+BEGIN
+    CREATE INDEX IX_EXPEDIENTE_PERSONAL
+    ON dbo.EXPEDIENTE_PERSONAL(idPersonal);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = 'IX_DOCUMENTO_PERSONAL'
+      AND object_id = OBJECT_ID('dbo.DOCUMENTO_PROFESIONAL')
+)
+BEGIN
+    CREATE INDEX IX_DOCUMENTO_PERSONAL
+    ON dbo.DOCUMENTO_PROFESIONAL(idPersonal);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = 'IX_HORARIO_PERSONAL_DIA'
+      AND object_id = OBJECT_ID('dbo.HORARIO_REFERENCIA')
+)
+BEGIN
+    CREATE INDEX IX_HORARIO_PERSONAL_DIA
+    ON dbo.HORARIO_REFERENCIA (
+        idPersonal,
+        diaSemana,
+        fechaInicioVigencia,
+        fechaFinVigencia
+    );
+END;
+GO
+
+/* ============================================================
+   7. VERIFICAR TABLAS DE RECURSOS HUMANOS
+   ============================================================ */
+
+SELECT
+    TABLE_NAME AS Tabla,
+    'EXISTENTE' AS Estado
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE = 'BASE TABLE'
+AND TABLE_NAME IN (
+    'PERSONAL',
+    'USUARIO',
+    'SERVICIO_HOSPITALARIO',
+    'EXPEDIENTE_PERSONAL',
+    'DOCUMENTO_PROFESIONAL',
+    'HORARIO_REFERENCIA'
+)
+ORDER BY TABLE_NAME;
+GO
+
+/* ============================================================
+   8. VERIFICAR CAMPOS DE PERSONAL
+   ============================================================ */
+
+SELECT
+    COLUMN_NAME AS Campo,
+    DATA_TYPE AS TipoDato,
+    CHARACTER_MAXIMUM_LENGTH AS Longitud,
+    IS_NULLABLE AS PermiteNulos
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME = 'PERSONAL'
+ORDER BY ORDINAL_POSITION;
+GO
+
+/* ============================================================
+   9. VERIFICAR CLAVES FORANEAS DEL MODULO
+   ============================================================ */
+
+SELECT
+    FK.name AS NombreRelacion,
+    OBJECT_NAME(FKC.parent_object_id) AS TablaOrigen,
+    COL_NAME(
+        FKC.parent_object_id,
+        FKC.parent_column_id
+    ) AS CampoOrigen,
+    OBJECT_NAME(FKC.referenced_object_id) AS TablaDestino,
+    COL_NAME(
+        FKC.referenced_object_id,
+        FKC.referenced_column_id
+    ) AS CampoDestino
+FROM sys.foreign_keys FK
+INNER JOIN sys.foreign_key_columns FKC
+    ON FK.object_id = FKC.constraint_object_id
+WHERE OBJECT_NAME(FKC.parent_object_id) IN (
+    'EXPEDIENTE_PERSONAL',
+    'DOCUMENTO_PROFESIONAL',
+    'HORARIO_REFERENCIA'
+)
+ORDER BY TablaOrigen;
+GO
+
+/* ============================================================
+   10. VERIFICAR CODIGO BIOMETRICO UNICO
+   ============================================================ */
+
+SELECT
+    name AS NombreIndice,
+    is_unique AS EsUnico,
+    has_filter AS TieneFiltro,
+    filter_definition AS Condicion
+FROM sys.indexes
+WHERE object_id = OBJECT_ID('dbo.PERSONAL')
+AND name = 'UX_PERSONAL_CODIGO_BIOMETRICO';
+GO
+
+/* ============================================================
+   FIN DEL MODULO RECURSOS HUMANOS
+   ============================================================ */
+
+============================================================
+FIN DEL SCRIPT
+HOSPITAL SAN ANTONIO
+============================================================

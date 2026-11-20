@@ -1,0 +1,17 @@
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Archivos de compilación
+**/bin/
+**/obj/
+
+# Archivos temporales
+*.cache
+*.log
+
+# Publicaciones
+**/publish/
+**/artifacts/
